@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  AGENT
+}
+
+enum LeadStatus {
+  NEW
+  IN_PROGRESS
+  CLOSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users         User[]
+  leads         Lead[]
+  messages      Message[]
+  inboundEvents InboundEvent[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  email        String
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(AGENT)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedLeads Lead[] @relation("AssignedAgent")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Lead {
+  id               String     @id @default(uuid()) @db.Uuid
+  tenantId         String     @map("tenant_id") @db.Uuid
+  phone            String
+  name             String?
+  status           LeadStatus @default(NEW)
+  assignedToUserId String?    @map("assigned_to_user_id") @db.Uuid
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedTo User?     @relation("AssignedAgent", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  messages   Message[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, assignedToUserId])
+  @@index([tenantId, status])
+  @@map("leads")
+}
+
+model Message {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  leadId    String           @map("lead_id") @db.Uuid
+  direction MessageDirection
+  text      String
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@index([tenantId])
+  @@map("messages")
+}
+
+model InboundEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  messageId  String   @map("message_id")
+  receivedAt DateTime @default(now()) @map("received_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, messageId])
+  @@index([tenantId])
+  @@map("inbound_events")
+}

@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: crm-postgres
+    environment:
+      POSTGRES_USER: crm_user
+      POSTGRES_PASSWORD: crm_password
+      POSTGRES_DB: crm_inbox
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm_user -d crm_inbox"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crm-backend
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://crm_user:crm_password@postgres:5432/crm_inbox
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: super-secret-jwt-key-change-in-production
+      PORT: 4000
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: crm-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
